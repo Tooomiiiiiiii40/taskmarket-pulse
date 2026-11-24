@@ -8,12 +8,21 @@ const CHAIN_NAME = { 4217: 'Tempo', 8453: 'Base' };
 const CHAIN_UNIT = { 4217: 'OUSD', 8453: 'USDC' };
 
 async function j(url) {
-  const r = await fetch(url, {
-    headers: { 'user-agent': 'taskmarket-pulse/1.0', accept: 'application/json' },
-    cf: { cacheTtl: 120, cacheEverything: true },
-  });
-  if (!r.ok) throw new Error('upstream ' + r.status + ' ' + url);
-  return r.json();
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const r = await fetch(url, {
+        headers: { 'user-agent': 'taskmarket-pulse/1.0', accept: 'application/json' },
+        cf: { cacheTtl: 120, cacheEverything: true },
+      });
+      if (!r.ok) throw new Error('upstream ' + r.status + ' ' + url);
+      return await r.json();
+    } catch (e) {
+      lastErr = e;
+      await new Promise((res) => setTimeout(res, 800 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 function isoWeekKey(d) {
@@ -269,6 +278,32 @@ svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
 .vlink{float:right;background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:99px;padding:2px 10px;font:inherit;font-size:12px;cursor:pointer}
 .vlink:hover{color:var(--cream);border-color:var(--muted)}
 .panel.flash{outline:2px solid var(--magenta);outline-offset:2px}
+.weather{font-family:"Instrument Serif",serif;font-size:20px;color:var(--cream);margin-top:14px;max-width:60ch}
+.weather em{color:var(--magenta);font-style:italic}
+.sharerow{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.sharebtn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:99px;padding:5px 13px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none}
+.sharebtn:hover{color:var(--cream);border-color:var(--muted)}
+.fname{min-width:190px}
+.heatwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.legend{flex-wrap:wrap}
+#riverNote{flex-basis:100%;width:100%}
+@media(max-width:640px){
+  .wrap{padding:20px 12px 44px}
+  .panel{padding:14px}
+  .card .v{font-size:29px}
+  .cards{grid-template-columns:repeat(auto-fit,minmax(140px,1fr))}
+  .bar-row{grid-template-columns:82px 1fr 54px;gap:7px;font-size:12.5px}
+  .fname{min-width:0}
+  .heat{gap:2px}
+  .heat .hh{font-size:8px}
+  .asof{text-align:left}
+  .seg button{padding:7px 12px;font-size:13px}
+  .segrow{align-items:flex-start}
+  #metricSeg{display:grid;grid-template-columns:1fr 1fr;width:100%}
+  #metricSeg button{border-radius:0}
+  .weather{font-size:18px}
+  .feed-item .title{white-space:normal}
+}
 </style>
 </head>
 <body>
@@ -278,6 +313,14 @@ svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
       <div class="brand"><span class="tiles" aria-hidden="true"><i class="f"></i><i></i><i class="f"></i><i></i><i class="m"></i><i class="f"></i><i></i><i class="f"></i><i></i></span><b>Taskmarket</b> Pulse</div>
       <h1>The market, <em>live.</em></h1>
       <p class="sub">What is happening on Taskmarket right now, and over time: agents, tasks, rewards put up and rewards paid, on Tempo and Base. Read-only. No wallet, no sign-in.</p>
+      <p class="weather" id="weather"></p>
+      <div id="heroSpark" style="margin-top:10px;max-width:560px"></div>
+      <div class="sharerow">
+        <span class="seg-label">Share</span>
+        <a class="sharebtn" id="shareX" target="_blank" rel="noopener">Post on X</a>
+        <a class="sharebtn" id="shareLI" target="_blank" rel="noopener">Post on LinkedIn</a>
+        <button class="sharebtn" id="shareCopy" type="button">Copy link</button>
+      </div>
     </div>
     <div class="asof">Data as of<br><span class="mono" id="asof">…</span><br>fetched on the server,<br>refreshed at least hourly</div>
   </header>
@@ -340,6 +383,11 @@ svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
     </section>
   </div>
 
+  <section class="panel" id="view-actors">
+    <div class="panel-head"><div><h2>Who is doing the <em>posting</em></h2><p class="panel-sub">Tasks by who posted them — agents or people.</p></div><button class="vlink" data-view="actors" type="button">link</button></div>
+    <div id="actorBars"></div>
+  </section>
+
   <section class="panel" id="view-funnel">
     <h2>What becomes of a task <button class="vlink" data-view="view-funnel" title="Copy a link to this view">link</button></h2>
     <p class="hint">Every task posted on this chain, followed to where it ended up. A task that completes paid a worker; a task that expires paid nobody.</p>
@@ -355,7 +403,7 @@ svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
   <section class="panel" id="view-heat">
     <h2>Activity heatmap <button class="vlink" data-view="view-heat" title="Copy a link to this view">link</button></h2>
     <p class="hint">Events by hour of the week (UTC), last 30 days. Brighter is busier.</p>
-    <div class="heat" id="heat"></div>
+    <div class="heatwrap"><div class="heat" id="heat"></div></div>
   </section>
 
   <div class="grid" id="insights"></div>
@@ -430,6 +478,17 @@ function render(){
   document.getElementById('cards').innerHTML = cards.map(function(x){
     return '<div class="card"><div class="k">' + x[0] + '</div><div class="v">' + x[1] + '</div><div class="n">' + x[2] + '</div></div>';
   }).join('');
+  var s30 = c.series['30d'] || [];
+  if (s30.length >= 8) {
+    var yday = s30[s30.length - 2], prevRows = s30.slice(-16, -2);
+    var avgTasks = prevRows.reduce(function(a, r){ return a + Number(r.tasksCreated || 0); }, 0) / prevRows.length;
+    var ratio = avgTasks > 0 ? Number(yday.tasksCreated || 0) / avgTasks : 1;
+    var mood = ratio >= 1.15 ? '<em>busier</em> than usual' : (ratio <= 0.85 ? '<em>quieter</em> than usual' : 'a <em>typical</em> day');
+    document.getElementById('weather').innerHTML = 'Yesterday on ' + (state.chain === '4217' ? 'Tempo' : 'Base') + ', ' + fmt(yday.tasksCreated || 0) + ' tasks were posted and ' + money(yday.paidVolume || 0) + ' was paid to workers — ' + mood + '.';
+    var mx = 0; s30.forEach(function(r){ var v = Number(r.paidVolume || 0); if (v > mx) mx = v; }); if (mx <= 0) mx = 1;
+    var pts = s30.map(function(r, i){ return (i/(s30.length-1)*552 + 4).toFixed(1) + ',' + (40 - Number(r.paidVolume || 0)/mx*34).toFixed(1); }).join(' ');
+    document.getElementById('heroSpark').innerHTML = '<svg viewBox="0 0 560 44" width="100%" role="img" aria-label="Rewards paid per day, last 30 days"><polyline points="' + pts + '" fill="none" stroke="#D9A097" stroke-width="2"/></svg><div class="mono" style="color:var(--muted);font-size:11px">rewards paid per day · last 30 days</div>';
+  }
   var rows = c.series[state.range] || [];
   document.getElementById('chartTitle').textContent = METRICS[state.metric] + ', daily';
   document.getElementById('chartHint').textContent = 'Range ' + state.range + ' · rewards in ' + unit + ' · source: platform time series';
@@ -439,7 +498,7 @@ function render(){
   var allRows = c.series.all || rows, cum = [], rp = 0, rq = 0;
   allRows.forEach(function(r){ rp += Number(r.rewardVolume || 0); rq += Number(r.paidVolume || 0); cum.push({ bucket: r.bucket, rewardVolume: rp, paidVolume: rq }); });
   lineChart(document.getElementById('river'), cum, ['rewardVolume','paidVolume'], ['#D9A097','#E74079'], true);
-  document.getElementById('riverNote').textContent = 'So far: ' + money(rp) + ' put up · ' + money(rq) + ' paid out · ' + (rp > 0 ? Math.round(rq/rp*100) : 0) + '% settled';
+  document.getElementById('riverNote').textContent = 'So far: ' + money(rp) + ' put up · ' + money(rq) + ' paid out · ' + (rp > 0 ? Math.round(rq/rp*100) : 0) + '% settled · ' + money(Math.max(0, rp - rq)) + ' still in escrow or in progress';
   var stMap = {}; (c.breakdowns.status || []).forEach(function(x){ stMap[x.status] = x.count; });
   var total = Object.keys(stMap).reduce(function(a, k){ return a + stMap[k]; }, 0) || 1;
   var stillOpen = (stMap.open || 0) + (stMap.claimed || 0) + (stMap.pending_approval || 0) + (stMap.worker_selected || 0);
@@ -451,10 +510,11 @@ function render(){
     ['Cancelled', stMap.cancelled || 0]
   ];
   document.getElementById('funnel').innerHTML = funnelPairs.map(function(p, i){
-    return '<div class="bar-row"><span class="name" style="min-width:190px">' + esc(p[0]) + '</span><div class="bar-track"><div class="bar-fill' + (i === 1 ? ' mag' : '') + '" style="width:' + (p[1]/total*100).toFixed(1) + '%"></div></div><span class="num mono">' + fmt(p[1]) + ' · ' + Math.round(p[1]/total*100) + '%</span></div>';
+    return '<div class="bar-row"><span class="name fname">' + esc(p[0]) + '</span><div class="bar-track"><div class="bar-fill' + (i === 1 ? ' mag' : '') + '" style="width:' + (p[1]/total*100).toFixed(1) + '%"></div></div><span class="num mono">' + fmt(p[1]) + ' · ' + Math.round(p[1]/total*100) + '%</span></div>';
   }).join('');
   bars(document.getElementById('byMode'), (c.breakdowns.mode || []).map(function(m){ return [m.mode, m.count]; }).sort(function(a,b){ return b[1]-a[1]; }), false);
   bars(document.getElementById('byStatus'), (c.breakdowns.status || []).map(function(m){ return [m.status.replace(/_/g,' '), m.count]; }).sort(function(a,b){ return b[1]-a[1]; }), true);
+  bars(document.getElementById('actorBars'), (c.breakdowns.actorType || []).map(function(m){ return [(m.actorType || m.type || m.actor || 'unknown'), m.count]; }).sort(function(a,b){ return b[1]-a[1]; }), false);
   document.getElementById('postersHint').textContent = 'Counted from the ' + fmt(c.taskSample) + ' most recent tasks on this chain: how many different posters put up work each week.';
   var pw = c.postersPerWeek || [];
   document.getElementById('posters').innerHTML = pw.length ? '<div style="display:flex;align-items:flex-end;gap:6px;height:120px">' + pw.map(function(w){
@@ -491,6 +551,14 @@ function seg(id, attr, key){
     b.classList.add('on'); state[key] = b.getAttribute(attr); render();
   });
 }
+var pageUrl = location.href.split('#')[0];
+var shareText = 'Taskmarket Pulse — the market, live: agents, tasks, rewards and payouts on Taskmarket.';
+document.getElementById('shareX').href = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(shareText) + '&url=' + encodeURIComponent(pageUrl);
+document.getElementById('shareLI').href = 'https://www.linkedin.com/sharing/share-offsite/?url=' + encodeURIComponent(pageUrl);
+document.getElementById('shareCopy').addEventListener('click', function(){
+  if (navigator.clipboard) navigator.clipboard.writeText(pageUrl).catch(function(){});
+  this.textContent = 'Copied'; var b = this; setTimeout(function(){ b.textContent = 'Copy link'; }, 1600);
+});
 document.addEventListener('click', function(e){
   var b = e.target.closest('.vlink'); if (!b) return;
   var link = location.href.split('#')[0] + '#' + b.getAttribute('data-view');
