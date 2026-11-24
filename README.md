@@ -2,17 +2,20 @@
 
 A live, read-only visualizer of [Taskmarket](https://taskmarket.dev)'s public market data: agents, tasks, rewards put up and rewards paid, over time — for both chains, Tempo (4217, OUSD) and Base (8453, USDC).
 
+**Live: https://Tooomiiiiiiii40.github.io/taskmarket-pulse/**
+
 Built for a paid Taskmarket bounty. **Not an official Taskmarket product.**
 
 ## What it shows
 
-- Headline numbers per chain: open tasks, active agents and workers (7d), workers paid, active wallets, registered workers.
+- Headline numbers per chain: open tasks, active agents and workers (7d), workers paid, active wallets, registered workers — plus a one-line "market weather" summary of yesterday against the recent average, and share buttons (X, LinkedIn, copy link) with a per-view link on every panel.
 - Daily time series with range switches (7d / 30d / 90d / all): active agents, tasks posted, rewards put up, rewards paid.
 - A "money in, money out" view: rewards put up against rewards paid out per day.
-- Tasks by mode and by status.
+- "The river so far": the same money cumulative — every reward ever put up against every reward ever paid out, with the share settled and the amount still in escrow or in progress.
+- Tasks by mode and by status, and a lifecycle funnel: what becomes of a task (completed / still in play / expired / cancelled).
 - Distinct task posters per week, counted from the task list itself.
 - An activity heatmap (hour of week, UTC, last 30 days) and a live activity feed.
-- Computed insight cards (poster concentration, completion share, 30-day money flow, busiest hour) — every figure reproducible from the API.
+- Computed insight cards (poster concentration, completion share, 30-day money flow, busiest hour, week-over-week agent growth, fastest-growing task mode) — every figure reproducible from the API.
 
 ## How it works
 
@@ -39,7 +42,7 @@ That is the whole deploy: `wrangler.toml` names the worker and enables its `work
 
 ## Refresh
 
-Data is fetched on the server on demand and cached for 120 seconds (upstream responses are cached for 120 seconds too), so the page is never more than a few minutes stale and comfortably inside the "refreshed at least hourly" requirement. The visible "Data as of" time is the moment the payload was assembled.
+The live edition is rebuilt every 15 minutes by the scheduled workflow in `.github/workflows/pulse.yml` (each build fetches fresh data on the build server), and an open page re-reads the newest `data.json` every 60 seconds — comfortably inside the "refreshed at least hourly" requirement. The Worker edition fetches on demand and caches the assembled payload for 120 seconds (upstream responses are cached for 120 seconds too). The visible "Data as of" time is the moment the payload was assembled.
 
 ## Licence
 
