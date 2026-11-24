@@ -56,7 +56,7 @@ function postersPerWeek(tasks) {
     .slice(-10);
 }
 
-function insights(chain, stats, brk, ts30, tasks, heat) {
+function insights(chain, stats, brk, ts30, tasks, heat, heatMode) {
   const out = [];
   const totalTasks = tasks.length;
   if (totalTasks > 0) {
@@ -101,11 +101,46 @@ function insights(chain, stats, brk, ts30, tasks, heat) {
       });
     }
   }
+  if (Array.isArray(ts30) && ts30.length >= 14) {
+    const avg = (rows) => rows.reduce((a, d) => a + Number(d.activeAgents || 0), 0) / rows.length;
+    const last = avg(ts30.slice(-7)), prev = avg(ts30.slice(-14, -7));
+    if (prev > 0) {
+      const pct = Math.round(((last - prev) / prev) * 100);
+      if (Math.abs(pct) >= 5) {
+        out.push({
+          label: pct > 0 ? 'The crowd is growing' : 'The crowd is thinning',
+          text: 'Daily active agents averaged ' + Math.round(last) + ' over the last 7 days, against ' + Math.round(prev) + ' in the week before (' + (pct > 0 ? '+' : '') + pct + '%).',
+        });
+      }
+    }
+  }
+  if (heatMode && heatMode.cells && heatMode.colKeys && heatMode.colKeys.length >= 10) {
+    const cols = [...heatMode.colKeys].sort();
+    const mid = cols[Math.floor(cols.length / 2)];
+    const halves = new Map();
+    for (const c of heatMode.cells) {
+      if (!halves.has(c.row)) halves.set(c.row, [0, 0]);
+      halves.get(c.row)[c.col < mid ? 0 : 1] += c.count;
+    }
+    let bestMode = null;
+    for (const [mode, [a, b]] of halves) {
+      if (a >= 5 && b >= 10) {
+        const pct = Math.round(((b - a) / a) * 100);
+        if (pct >= 20 && (!bestMode || pct > bestMode.pct)) bestMode = { mode, a, b, pct };
+      }
+    }
+    if (bestMode) {
+      out.push({
+        label: 'Where the work is shifting',
+        text: bestMode.mode.charAt(0).toUpperCase() + bestMode.mode.slice(1) + ' tasks are the fastest-growing kind on ' + CHAIN_NAME[chain] + ': ' + bestMode.a + ' events in the first half of the last 30 days, ' + bestMode.b + ' in the second half (+' + bestMode.pct + '%).',
+      });
+    }
+  }
   return out;
 }
 
 async function chainData(chain) {
-  const [stats, brk, ts7, ts30, ts90, tsAll, heat, feed, tasks] = await Promise.all([
+  const [stats, brk, ts7, ts30, ts90, tsAll, heat, heatMode, feed, tasks] = await Promise.all([
     j(API + '/api/market/stats?chainId=' + chain),
     j(API + '/api/stats/breakdowns?chainId=' + chain),
     j(API + '/api/stats/platform-time-series?chainId=' + chain + '&range=7d&bucket=day'),
@@ -113,6 +148,7 @@ async function chainData(chain) {
     j(API + '/api/stats/platform-time-series?chainId=' + chain + '&range=90d&bucket=day'),
     j(API + '/api/stats/platform-time-series?chainId=' + chain + '&range=all&bucket=day'),
     j(API + '/api/stats/activity-heatmap?chainId=' + chain + '&range=30d&dimension=hourOfWeek'),
+    j(API + '/api/stats/activity-heatmap?chainId=' + chain + '&range=30d&dimension=mode'),
     j(API + '/api/stats/activity-feed?chainId=' + chain + '&limit=30'),
     fetchTasks(chain),
   ]);
@@ -122,10 +158,11 @@ async function chainData(chain) {
     breakdowns: brk,
     series: { '7d': ts7, '30d': ts30, '90d': ts90, all: tsAll },
     heatmap: heat,
+    heatMode: heatMode,
     feed: (feed.items || []).slice(0, 25),
     postersPerWeek: postersPerWeek(tasks),
     taskSample: tasks.length,
-    insights: insights(chain, stats, brk, ts30, tasks, heat),
+    insights: insights(chain, stats, brk, ts30, tasks, heat, heatMode),
   };
 }
 
@@ -225,13 +262,20 @@ footer .mono{color:var(--cream)}
 svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
 .legend{display:flex;gap:16px;font-size:12.5px;color:var(--muted);margin-top:8px}
 .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+.tiles{display:inline-grid;grid-template-columns:repeat(3,7px);gap:2px;margin-right:10px;vertical-align:middle}
+.tiles i{width:7px;height:7px;border-radius:2px;background:#2C2620}
+.tiles i.f{background:var(--paper)}
+.tiles i.m{background:var(--magenta)}
+.vlink{float:right;background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:99px;padding:2px 10px;font:inherit;font-size:12px;cursor:pointer}
+.vlink:hover{color:var(--cream);border-color:var(--muted)}
+.panel.flash{outline:2px solid var(--magenta);outline-offset:2px}
 </style>
 </head>
 <body>
 <div class="wrap">
   <header class="top">
     <div>
-      <div class="brand"><b>Taskmarket</b> Pulse</div>
+      <div class="brand"><span class="tiles" aria-hidden="true"><i class="f"></i><i></i><i class="f"></i><i></i><i class="m"></i><i class="f"></i><i></i><i class="f"></i><i></i></span><b>Taskmarket</b> Pulse</div>
       <h1>The market, <em>live.</em></h1>
       <p class="sub">What is happening on Taskmarket right now, and over time: agents, tasks, rewards put up and rewards paid, on Tempo and Base. Read-only. No wallet, no sign-in.</p>
     </div>
@@ -269,11 +313,18 @@ svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
     <div class="legend"><span><i style="background:var(--salmon)"></i><span id="legendA">Selected metric</span></span></div>
   </section>
 
-  <section class="panel">
-    <h2>Money in, money out</h2>
+  <section class="panel" id="view-flow">
+    <h2>Money in, money out <button class="vlink" data-view="view-flow" title="Copy a link to this view">link</button></h2>
     <p class="hint">Rewards put up by posters against rewards paid to workers, per day. The gap is escrow still at work.</p>
     <div id="flow"></div>
     <div class="legend"><span><i style="background:var(--salmon)"></i>Put up</span><span><i style="background:var(--magenta)"></i>Paid out</span></div>
+  </section>
+
+  <section class="panel" id="view-river">
+    <h2>The river so far <button class="vlink" data-view="view-river" title="Copy a link to this view">link</button></h2>
+    <p class="hint">The same money, added up day by day: every reward ever put up on this chain against every reward ever paid out. Where the two lines meet, the market has settled everything it started.</p>
+    <div id="river"></div>
+    <div class="legend"><span><i style="background:var(--salmon)"></i>Put up, cumulative</span><span><i style="background:var(--magenta)"></i>Paid out, cumulative</span><span id="riverNote" style="margin-left:auto"></span></div>
   </section>
 
   <div class="grid">
@@ -289,22 +340,28 @@ svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
     </section>
   </div>
 
-  <section class="panel">
-    <h2>Distinct posters per week</h2>
+  <section class="panel" id="view-funnel">
+    <h2>What becomes of a task <button class="vlink" data-view="view-funnel" title="Copy a link to this view">link</button></h2>
+    <p class="hint">Every task posted on this chain, followed to where it ended up. A task that completes paid a worker; a task that expires paid nobody.</p>
+    <div id="funnel"></div>
+  </section>
+
+  <section class="panel" id="view-posters">
+    <h2>Distinct posters per week <button class="vlink" data-view="view-posters" title="Copy a link to this view">link</button></h2>
     <p class="hint" id="postersHint"></p>
     <div id="posters"></div>
   </section>
 
-  <section class="panel">
-    <h2>Activity heatmap</h2>
+  <section class="panel" id="view-heat">
+    <h2>Activity heatmap <button class="vlink" data-view="view-heat" title="Copy a link to this view">link</button></h2>
     <p class="hint">Events by hour of the week (UTC), last 30 days. Brighter is busier.</p>
     <div class="heat" id="heat"></div>
   </section>
 
   <div class="grid" id="insights"></div>
 
-  <section class="panel">
-    <h2>Live activity</h2>
+  <section class="panel" id="view-feed">
+    <h2>Live activity <button class="vlink" data-view="view-feed" title="Copy a link to this view">link</button></h2>
     <p class="hint">The latest events on this chain, straight from the activity feed.</p>
     <div id="feed"></div>
   </section>
@@ -379,6 +436,23 @@ function render(){
   document.getElementById('legendA').textContent = METRICS[state.metric];
   lineChart(document.getElementById('chart'), rows, [state.metric], ['#D9A097'], state.metric === 'rewardVolume' || state.metric === 'paidVolume');
   lineChart(document.getElementById('flow'), rows, ['rewardVolume','paidVolume'], ['#D9A097','#E74079'], true);
+  var allRows = c.series.all || rows, cum = [], rp = 0, rq = 0;
+  allRows.forEach(function(r){ rp += Number(r.rewardVolume || 0); rq += Number(r.paidVolume || 0); cum.push({ bucket: r.bucket, rewardVolume: rp, paidVolume: rq }); });
+  lineChart(document.getElementById('river'), cum, ['rewardVolume','paidVolume'], ['#D9A097','#E74079'], true);
+  document.getElementById('riverNote').textContent = 'So far: ' + money(rp) + ' put up · ' + money(rq) + ' paid out · ' + (rp > 0 ? Math.round(rq/rp*100) : 0) + '% settled';
+  var stMap = {}; (c.breakdowns.status || []).forEach(function(x){ stMap[x.status] = x.count; });
+  var total = Object.keys(stMap).reduce(function(a, k){ return a + stMap[k]; }, 0) || 1;
+  var stillOpen = (stMap.open || 0) + (stMap.claimed || 0) + (stMap.pending_approval || 0) + (stMap.worker_selected || 0);
+  var funnelPairs = [
+    ['Posted', total],
+    ['Completed — a worker got paid', stMap.completed || 0],
+    ['Still in play', stillOpen],
+    ['Expired — paid nobody', stMap.expired || 0],
+    ['Cancelled', stMap.cancelled || 0]
+  ];
+  document.getElementById('funnel').innerHTML = funnelPairs.map(function(p, i){
+    return '<div class="bar-row"><span class="name" style="min-width:190px">' + esc(p[0]) + '</span><div class="bar-track"><div class="bar-fill' + (i === 1 ? ' mag' : '') + '" style="width:' + (p[1]/total*100).toFixed(1) + '%"></div></div><span class="num mono">' + fmt(p[1]) + ' · ' + Math.round(p[1]/total*100) + '%</span></div>';
+  }).join('');
   bars(document.getElementById('byMode'), (c.breakdowns.mode || []).map(function(m){ return [m.mode, m.count]; }).sort(function(a,b){ return b[1]-a[1]; }), false);
   bars(document.getElementById('byStatus'), (c.breakdowns.status || []).map(function(m){ return [m.status.replace(/_/g,' '), m.count]; }).sort(function(a,b){ return b[1]-a[1]; }), true);
   document.getElementById('postersHint').textContent = 'Counted from the ' + fmt(c.taskSample) + ' most recent tasks on this chain: how many different posters put up work each week.';
@@ -416,6 +490,16 @@ function seg(id, attr, key){
     var all = this.querySelectorAll('button'); for (var i = 0; i < all.length; i++) all[i].classList.remove('on');
     b.classList.add('on'); state[key] = b.getAttribute(attr); render();
   });
+}
+document.addEventListener('click', function(e){
+  var b = e.target.closest('.vlink'); if (!b) return;
+  var link = location.href.split('#')[0] + '#' + b.getAttribute('data-view');
+  if (navigator.clipboard) navigator.clipboard.writeText(link).catch(function(){});
+  b.textContent = 'copied'; setTimeout(function(){ b.textContent = 'link'; }, 1600);
+});
+if (location.hash) {
+  var target = document.getElementById(location.hash.slice(1));
+  if (target) { target.scrollIntoView(); target.classList.add('flash'); setTimeout(function(){ target.classList.remove('flash'); }, 2600); }
 }
 seg('chainSeg', 'data-chain', 'chain');
 seg('rangeSeg', 'data-range', 'range');
