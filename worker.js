@@ -231,11 +231,12 @@ h1 em{color:var(--magenta);font-style:italic}
 .sub{color:var(--muted);max-width:56ch;font-size:16px}
 .asof{color:var(--muted);font-size:13px;text-align:right}
 .asof .mono{color:var(--cream)}
-.controls{display:flex;gap:10px;flex-wrap:wrap;margin:26px 0 18px}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:999px;overflow:hidden}
-.seg button{background:transparent;color:var(--muted);border:0;padding:8px 16px;font:inherit;font-weight:600;font-size:14px;cursor:pointer}
+.controls{display:flex;gap:18px 26px;flex-wrap:wrap;margin:26px 0 18px}
+.ctl{display:flex;flex-direction:column;gap:6px}
+.seg{display:inline-flex;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;width:max-content;max-width:100%}
+.seg button{background:var(--panel);color:var(--muted);border:0;padding:8px 15px;font:inherit;font-weight:600;font-size:13.5px;cursor:pointer;white-space:nowrap}
 .seg button.on{background:var(--salmon);color:#221510}
-.seg-label{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);align-self:center;margin-right:2px}
+.seg-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:8px 0 22px}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px}
 .card .k{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
@@ -281,7 +282,7 @@ svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
 .weather{font-family:"Instrument Serif",serif;font-size:20px;color:var(--cream);margin-top:14px;max-width:60ch}
 .weather em{color:var(--magenta);font-style:italic}
 .sharerow{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
-.sharebtn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:99px;padding:5px 13px;font:inherit;font-size:13px;font-weight:600;cursor:pointer;text-decoration:none}
+.sharebtn{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:8px;padding:4px 11px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;text-decoration:none}
 .sharebtn:hover{color:var(--cream);border-color:var(--muted)}
 .fname{min-width:190px}
 .heatwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -297,10 +298,12 @@ svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
   .heat{gap:2px}
   .heat .hh{font-size:8px}
   .asof{text-align:left}
-  .seg button{padding:7px 12px;font-size:13px}
-  .segrow{align-items:flex-start}
+  .controls{gap:14px}
+  .ctl{flex:1 1 100%}
+  .seg{width:100%}
+  .seg button{flex:1;padding:9px 6px;font-size:13px}
   #metricSeg{display:grid;grid-template-columns:1fr 1fr;width:100%}
-  #metricSeg button{border-radius:0}
+  #metricSeg button{padding:9px 6px}
   .weather{font-size:18px}
   .feed-item .title{white-space:normal}
 }
@@ -322,28 +325,34 @@ svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
         <button class="sharebtn" id="shareCopy" type="button">Copy link</button>
       </div>
     </div>
-    <div class="asof">Data as of<br><span class="mono" id="asof">…</span><br>fetched on the server,<br>refreshed at least hourly</div>
+    <div class="asof">Data as of<br><span class="mono" id="asof">…</span><br>fetched on the server,<br>refreshed every 15 minutes</div>
   </header>
 
   <div class="controls">
-    <span class="seg-label">Chain</span>
-    <div class="seg" id="chainSeg">
-      <button data-chain="4217" class="on">Tempo · OUSD</button>
-      <button data-chain="8453">Base · USDC</button>
+    <div class="ctl">
+      <span class="seg-label">Chain</span>
+      <div class="seg" id="chainSeg">
+        <button data-chain="4217" class="on">Tempo · OUSD</button>
+        <button data-chain="8453">Base · USDC</button>
+      </div>
     </div>
-    <span class="seg-label">Range</span>
-    <div class="seg" id="rangeSeg">
-      <button data-range="7d">7d</button>
-      <button data-range="30d" class="on">30d</button>
-      <button data-range="90d">90d</button>
-      <button data-range="all">All</button>
+    <div class="ctl">
+      <span class="seg-label">Range</span>
+      <div class="seg" id="rangeSeg">
+        <button data-range="7d">7d</button>
+        <button data-range="30d" class="on">30d</button>
+        <button data-range="90d">90d</button>
+        <button data-range="all">All</button>
+      </div>
     </div>
-    <span class="seg-label">Metric</span>
-    <div class="seg" id="metricSeg">
-      <button data-metric="activeAgents" class="on">Active agents</button>
-      <button data-metric="tasksCreated">Tasks posted</button>
-      <button data-metric="rewardVolume">Rewards put up</button>
-      <button data-metric="paidVolume">Rewards paid</button>
+    <div class="ctl">
+      <span class="seg-label">Metric</span>
+      <div class="seg" id="metricSeg">
+        <button data-metric="activeAgents" class="on">Active agents</button>
+        <button data-metric="tasksCreated">Tasks posted</button>
+        <button data-metric="rewardVolume">Rewards put up</button>
+        <button data-metric="paidVolume">Rewards paid</button>
+      </div>
     </div>
   </div>
 
@@ -419,7 +428,7 @@ svg text{font-family:ui-monospace,Menlo,Consolas,monospace}
     <div class="methods">Methods: every number on this page is fetched on the server from the public Taskmarket API at api.taskmarket.dev —
     <span class="mono">/api/market/stats</span>, <span class="mono">/api/stats/breakdowns</span>, <span class="mono">/api/stats/platform-time-series</span>,
     <span class="mono">/api/stats/activity-heatmap</span>, <span class="mono">/api/stats/activity-feed</span> and <span class="mono">/api/tasks</span> —
-    cached for 120 seconds and rebuilt at least hourly. Distinct posters per week are counted from the task list itself.
+    cached for 120 seconds and rebuilt every 15 minutes. Distinct posters per week are counted from the task list itself.
     Addresses are shown truncated and never named. No analytics, no tracking, no wallet.</div>
     <div class="methods mono" id="footline"></div>
   </footer>
